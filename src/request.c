@@ -3,7 +3,6 @@
 
 #define MAXBUF (8192)
 
-
 //
 //	TODO: add code to create and manage the buffer
 //
