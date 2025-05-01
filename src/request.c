@@ -2,10 +2,26 @@
 #include "request.h"
 
 #define MAXBUF (8192)
+#define BUFFER_SIZE 30
 
-//
+
+//struct int fd filename buffer or buffer size...
+typedef struct {
+  int fd;
+  char filename[MAXBUF];
+  int filesize;
+} request_t;
+
 //	TODO: add code to create and manage the buffer
-//
+// - A bounded buffer to store incoming requests.
+request_t buffer[BUFFER_SIZE];
+int in = 0;
+int out = 0;
+int queue = 0;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t buffer_full = PTHREAD_COND_INITIALIZER;
+pthread_cond_t buffer_empty = PTHREAD_COND_INITIALIZER;
+
 
 //
 // Sends out HTTP response in case of errors
@@ -128,12 +144,50 @@ void request_serve_static(int fd, char *filename, int filesize) {
     munmap_or_die(srcp, filesize);
 }
 
+
+void buffer_add(request_t arg){
+  pthread_mutex_lock(&mutuex);
+  while (queue == BUFFER_SIZE){
+    
+  }
+}
+
+
+
+// - A scheduling algorithm that chooses requests from the buffer based on FIFO, SFF, or Random.
+
+//TODO: Function for random
+request_t FIFO(){ //if I wanted to pull from the buffer, and return item
+
+}
+//the other option is figuring out which index to pull from which would be int FIFO()
+//TODO: Function for FIFO
+//TODO: Function for SFF
+//Check wserver.c for command
+
+
+ 
 //
 // Fetches the requests from the buffer and handles them (thread logic)
-//
+// Child threads
 void* thread_request_serve_static(void* arg)
 {
 	// TODO: write code to actualy respond to HTTP requests
+// Step 1: prolly gonna need to be an infinite loop, while (1); makes sure threads stay, dont escape
+    while (1){
+      // Step 2: Threads need to check if there is something in the global buffer
+      // If there is, remove from buffer based on scheduling policy, and call request_serve_static
+          //When pulling from buffer, getting a request_t type/variable, when calling request_serve_static, arguments: fd, filename, filesize. Which means request_t.fd etc...
+      // If not then sleep or spin wait
+      //
+
+    }
+
+}
+}
+// - Security measure to prevent directory traversal attacks.
+int check_path(const char *path) {
+  return strstr(path, "..") == NULL;
 }
 
 //
@@ -172,8 +226,21 @@ void request_handle(int fd) {
 			request_error(fd, filename, "403", "Forbidden", "server could not read this file");
 			return;
 		}
-		
-		// TODO: write code to add HTTP requests in the buffer based on the scheduling policy
+
+    // TODO: add cant escape from current directory (changing url to access something we shouldn't) changing test1 to test2, forces a directory change but it could already be accessed so i dont need to worry about it?
+    if (!check_path(filename)) {
+      request_error(fd, filename, "403", "Forbidden", "directory traversal attempt detected");
+      return;
+    } 
+
+    //get file size
+    request_t request_in = {fd, filename};
+    request_in.filesize = sbuf.st_size;
+
+    // figure out how many are in the buffer
+    // add to buffer, ensure locks are in place so addition and removal are not a race condition
+    //Gonna do the two comments above in buffer_add and buffer_remove (remove is part of scheduling not request_handle)
+    buffer_add(request_in);
 
     } else {
 		request_error(fd, filename, "501", "Not Implemented", "server does not serve dynamic content request");
