@@ -17,11 +17,6 @@ int main(int argc, char *argv[]) {
     char *root_dir = default_root;
     int port = 10000;
     
-	// below default values are defined in 'request.h'
-    int num_threads = DEFAULT_THREADS;
-    int buffer_max_size = DEFAULT_BUFFER_SIZE;
-    int scheduling_algo = DEFAULT_SCHED_ALGO;	
-    
 	// fetch (and set) values from command line arguments
     while ((c = getopt(argc, argv, "hd:p:t:b:s:")) != -1)
 		switch (c) {

@@ -2,8 +2,11 @@
 #include "request.h"
 
 #define MAXBUF (8192)
-#define BUFFER_SIZE 30
+#define BUFFER_SIZE 30 // needed this line because I tried to compare line 17 (buffer[30]) with an integer; forgot about type difference...
 
+int num_threads = DEFAULT_THREADS;
+int buffer_max_size = DEFAULT_BUFFER_SIZE;
+int scheduling_algo = DEFAULT_SCHED_ALGO;
 
 //struct int fd filename buffer or buffer size...
 typedef struct {
@@ -15,8 +18,8 @@ typedef struct {
 //	TODO: add code to create and manage the buffer
 // - A bounded buffer to store incoming requests.
 request_t buffer[BUFFER_SIZE];
-int in = 0;
-int out = 0;
+int add_index = 0;
+int rm_index = 0;
 int queue = 0;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t buffer_full = PTHREAD_COND_INITIALIZER;
@@ -144,15 +147,37 @@ void request_serve_static(int fd, char *filename, int filesize) {
     munmap_or_die(srcp, filesize);
 }
 
-
+//---------------------------Buffer Modification--------------------------------------------\\
 void buffer_add(request_t arg){
-  pthread_mutex_lock(&mutuex);
-  while (queue == BUFFER_SIZE){
-    
+  pthread_mutex_lock(&mutex);
+  while (queue == BUFFER_SIZE){ //if queue is full then wait
+    pthread_cond_wait(&buffer_empty, &mutex);
   }
+  
+  buffer[add_index] = arg; //storing the current request in a buffer by using an index 
+  add_index= (add_index + 1) % BUFFER_SIZE; //prevents going over 30 requests in the buffer
+  queue++; //increases the amount of requests in the queue
+
+  pthread_cond_signal(&buffer_full);
+  pthread_mutex_unlock(&mutex);
 }
 
+request_t buffer_remove() { //removes an item from the buffer, and returns the request for something else to use; it's the "current" request
+  pthread_mutex_lock(&mutex);
+  while (queue == 0){
+    pthread_cond_wait(&buffer_full);
+  }
 
+  request_t curr_request = buffer[rm_index]; //starts at bottom
+  rm_index = (rm_index + 1) % BUFFER_SIZE;
+  queue--; // logic above doesnt actually remove the request from the queue, it just decreases the queue so that the program thinks there is space, and increments rm_index so that the next request can be selected 
+
+  pthread_cond_signal(&buffer_empty);
+  pthread_mutex_unlock(&mutex);
+
+  return curr_request
+}
+//-------------------------------------------------------------------------------------------\\
 
 // - A scheduling algorithm that chooses requests from the buffer based on FIFO, SFF, or Random.
 
@@ -179,8 +204,9 @@ void* thread_request_serve_static(void* arg)
       // If there is, remove from buffer based on scheduling policy, and call request_serve_static
           //When pulling from buffer, getting a request_t type/variable, when calling request_serve_static, arguments: fd, filename, filesize. Which means request_t.fd etc...
       // If not then sleep or spin wait
-      //
-
+    
+      request_t request = buffer_remove();
+      request_serve_static(request.fd, request.filename, request.filesize)
     }
 
 }
@@ -239,7 +265,7 @@ void request_handle(int fd) {
 
     // figure out how many are in the buffer
     // add to buffer, ensure locks are in place so addition and removal are not a race condition
-    //Gonna do the two comments above in buffer_add and buffer_remove (remove is part of scheduling not request_handle)
+    //Gonna do the two comments above in buffer_add and buffer_remove
     buffer_add(request_in);
 
     } else {
