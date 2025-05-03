@@ -160,22 +160,6 @@ void buffer_add(request_t arg){
   pthread_mutex_unlock(&mutex);
 }
 
-//Buffer remove was integrated int thread_request_serve_static
-// request_t buffer_remove() { //removes an item from the buffer, and returns the request for something else to use; it's the "current" request
-//   pthread_mutex_lock(&mutex);
-//   while (queue == 0){
-//     pthread_cond_wait(&buffer_full);
-//   }
-
-//   request_t curr_request = buffer[rm_index]; //starts at bottom
-//   rm_index = (rm_index + 1) % BUFFER_SIZE;
-//   queue--; // logic above doesnt actually remove the request from the queue, it just decreases the queue so that the program thinks there is space, and increments rm_index so that the next request can be selected 
-
-//   pthread_cond_signal(&buffer_empty, &mutex);
-//   pthread_mutex_unlock(&mutex);
-
-//   return curr_request;
-// }
 int fetch_index_fifo() {
   return rm_index;
 }
@@ -316,8 +300,10 @@ void request_handle(int fd) {
     strncpy(request_in.filename, filename, sizeof(request_in.filename) - 1);
     request_in.filename[sizeof(request_in.filename) - 1] = '\0';
 
-    request_in.filesize = sbuf.st_size;
-
+    if (stat(filename, &sbuf) == 0) { //check stat output for errors
+      request_in.filesize = sbuf.st_size;
+    }
+    
     // figure out how many are in the buffer
     // add to buffer, ensure locks are in place so addition and removal are not a race condition
     //Gonna do the two comments above in buffer_add and buffer_remove
