@@ -196,33 +196,11 @@ int fetch_index() {
 
 //-------------------------------------------------------------------------------------------
 
-// - A scheduling algorithm that chooses requests from the buffer based on FIFO, SFF, or Random.
-
-//TODO: Function for random
-//request_t FIFO(){ //if I wanted to pull from the buffer, and return item
-
-
-//the other option is figuring out which index to pull from which would be int FIFO()
-//TODO: Function for FIFO
-//TODO: Function for SFF
-//Check wserver.c for command
-
-
- 
-//
 // Fetches the requests from the buffer and handles them (thread logic)
 // Child threads
 void* thread_request_serve_static(void* arg){
 	// TODO: write code to actualy respond to HTTP requests
-// Step 1: prolly gonna need to be an infinite loop, while (1); makes sure threads stay, dont escape
     while (1){
-      // Step 2: Threads need to check if there is something in the global buffer
-      // If there is, remove from buffer based on scheduling policy, and call request_serve_static
-          //When pulling from buffer, getting a request_t type/variable, when calling request_serve_static, arguments: fd, filename, filesize. Which means request_t.fd etc...
-      // If not then sleep or spin wait
-    
-
-
       pthread_mutex_lock(&mutex);
       while (queue == 0){
         pthread_cond_wait(&buffer_full, &mutex);
@@ -246,7 +224,6 @@ int check_path(const char *path) {
   return strstr(path, "..") == NULL;
 }
 
-//
 // Initial handling of the request
 //
 void request_handle(int fd) {
@@ -303,10 +280,6 @@ void request_handle(int fd) {
     if (stat(filename, &sbuf) == 0) { //check stat output for errors
       request_in.filesize = sbuf.st_size;
     }
-    
-    // figure out how many are in the buffer
-    // add to buffer, ensure locks are in place so addition and removal are not a race condition
-    //Gonna do the two comments above in buffer_add and buffer_remove
     buffer_add(request_in);
 
     } else {
