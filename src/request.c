@@ -147,44 +147,77 @@ void request_serve_static(int fd, char *filename, int filesize) {
     munmap_or_die(srcp, filesize);
 }
 
-//---------------------------Buffer Modification--------------------------------------------\\
+//---------------------------Buffer Modification--------------------------------------------
 void buffer_add(request_t arg){
   pthread_mutex_lock(&mutex);
   while (queue == BUFFER_SIZE){ //if queue is full then wait
     pthread_cond_wait(&buffer_empty, &mutex);
   }
-  
   buffer[add_index] = arg; //storing the current request in a buffer by using an index 
-  add_index= (add_index + 1) % BUFFER_SIZE; //prevents going over 30 requests in the buffer
+  add_index = (add_index + 1) % BUFFER_SIZE; //prevents going over 30 requests in the buffer
   queue++; //increases the amount of requests in the queue
-
   pthread_cond_signal(&buffer_full);
   pthread_mutex_unlock(&mutex);
 }
 
-request_t buffer_remove() { //removes an item from the buffer, and returns the request for something else to use; it's the "current" request
-  pthread_mutex_lock(&mutex);
-  while (queue == 0){
-    pthread_cond_wait(&buffer_full);
-  }
+//Buffer remove was integrated int thread_request_serve_static
+// request_t buffer_remove() { //removes an item from the buffer, and returns the request for something else to use; it's the "current" request
+//   pthread_mutex_lock(&mutex);
+//   while (queue == 0){
+//     pthread_cond_wait(&buffer_full);
+//   }
 
-  request_t curr_request = buffer[rm_index]; //starts at bottom
-  rm_index = (rm_index + 1) % BUFFER_SIZE;
-  queue--; // logic above doesnt actually remove the request from the queue, it just decreases the queue so that the program thinks there is space, and increments rm_index so that the next request can be selected 
+//   request_t curr_request = buffer[rm_index]; //starts at bottom
+//   rm_index = (rm_index + 1) % BUFFER_SIZE;
+//   queue--; // logic above doesnt actually remove the request from the queue, it just decreases the queue so that the program thinks there is space, and increments rm_index so that the next request can be selected 
 
-  pthread_cond_signal(&buffer_empty);
-  pthread_mutex_unlock(&mutex);
+//   pthread_cond_signal(&buffer_empty, &mutex);
+//   pthread_mutex_unlock(&mutex);
 
-  return curr_request
+//   return curr_request;
+// }
+int fetch_index_fifo() {
+  return rm_index;
 }
-//-------------------------------------------------------------------------------------------\\
+
+int fetch_index_sff() {
+  int index = rm_index;
+  int counter = 0;
+  for (int i = 0; counter < queue; i = (i + 1) % BUFFER_SIZE, counter++) {
+    if (buffer[i].filesize < buffer[index].filesize){
+      index = i;
+    }
+  }
+  return index;
+}
+
+int fetch_index_random() {
+  int counter = 0;
+  int plc_hlder[BUFFER_SIZE];
+  for (int i = rm_index; counter < queue; i = (i + 1) % BUFFER_SIZE, counter++) {
+    plc_hlder[counter] = i;
+  }
+  int random = rand() % queue;
+  return plc_hlder[random];
+}
+
+int fetch_index() {
+  switch (scheduling_algo) {
+    case 0: return fetch_index_fifo();
+    case 1: return fetch_index_sff();
+    case 2:  return fetch_index_random();
+    default: return fetch_index_fifo();
+  }
+}
+
+//-------------------------------------------------------------------------------------------
 
 // - A scheduling algorithm that chooses requests from the buffer based on FIFO, SFF, or Random.
 
 //TODO: Function for random
-request_t FIFO(){ //if I wanted to pull from the buffer, and return item
+//request_t FIFO(){ //if I wanted to pull from the buffer, and return item
 
-}
+
 //the other option is figuring out which index to pull from which would be int FIFO()
 //TODO: Function for FIFO
 //TODO: Function for SFF
@@ -195,8 +228,7 @@ request_t FIFO(){ //if I wanted to pull from the buffer, and return item
 //
 // Fetches the requests from the buffer and handles them (thread logic)
 // Child threads
-void* thread_request_serve_static(void* arg)
-{
+void* thread_request_serve_static(void* arg){
 	// TODO: write code to actualy respond to HTTP requests
 // Step 1: prolly gonna need to be an infinite loop, while (1); makes sure threads stay, dont escape
     while (1){
@@ -205,12 +237,26 @@ void* thread_request_serve_static(void* arg)
           //When pulling from buffer, getting a request_t type/variable, when calling request_serve_static, arguments: fd, filename, filesize. Which means request_t.fd etc...
       // If not then sleep or spin wait
     
-      request_t request = buffer_remove();
-      request_serve_static(request.fd, request.filename, request.filesize)
-    }
 
+
+      pthread_mutex_lock(&mutex);
+      while (queue == 0){
+        pthread_cond_wait(&buffer_full, &mutex);
+      }
+      int index = fetch_index();
+      request_t curr_request = buffer[index]; //starts at bottom
+      if (index != rm_index) {//just in case i did something wrong
+        buffer[index] = buffer[rm_index];
+      }
+      rm_index = (rm_index + 1) % BUFFER_SIZE;
+      queue--; // logic above doesnt actually remove the request from the queue, it just decreases the queue so that the program thinks there is space, and increments rm_index so that the next request can be selected 
+    
+      pthread_cond_signal(&buffer_empty);
+      pthread_mutex_unlock(&mutex);
+      request_serve_static(curr_request.fd, curr_request.filename, curr_request.filesize);
+    }
 }
-}
+
 // - Security measure to prevent directory traversal attacks.
 int check_path(const char *path) {
   return strstr(path, "..") == NULL;
@@ -260,7 +306,16 @@ void request_handle(int fd) {
     } 
 
     //get file size
-    request_t request_in = {fd, filename};
+    request_t request_in;
+    request_in.fd = fd;
+
+    //This line: request_in.filename = filename;
+    // Had an issue with type difference, didnt know how to type cast for it, and couldnt forget about it since it risks potential buffer overflow
+    //So I asked perplexity and it gave this:
+
+    strncpy(request_in.filename, filename, sizeof(request_in.filename) - 1);
+    request_in.filename[sizeof(request_in.filename) - 1] = '\0';
+
     request_in.filesize = sbuf.st_size;
 
     // figure out how many are in the buffer
