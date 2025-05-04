@@ -168,9 +168,10 @@ int fetch_index_sff() {//need to address starvation, hint
   int index = 0;
   int smallest = INT_MAX;
   for (int i = 0 ; i < queue_size; i++) {
-    buffer[i].counter++
-    if buffer[i].counter >= threshold {
-      return i
+    buffer[i].counter++;
+    if (buffer[i].counter >= threshold) {
+      return i;
+    }
     if (buffer[i].filesize < smallest){
       index = i;
       smallest = buffer[i].filesize;
