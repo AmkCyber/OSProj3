@@ -1,5 +1,6 @@
 #include "io_helper.h"
 #include "request.h"
+#include <limits.h>
 
 #define MAXBUF (8192)
 #define BUFFER_SIZE 30 // needed this line because I tried to compare line 17 (buffer[30]) with an integer; forgot about type difference...
@@ -18,9 +19,7 @@ typedef struct {
 //	TODO: add code to create and manage the buffer
 // - A bounded buffer to store incoming requests.
 request_t buffer[BUFFER_SIZE];
-int add_index = 0;
-int rm_index = 0;
-int queue = 0;
+int queue_size = 0;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t buffer_full = PTHREAD_COND_INITIALIZER;
 pthread_cond_t buffer_empty = PTHREAD_COND_INITIALIZER;
@@ -150,39 +149,33 @@ void request_serve_static(int fd, char *filename, int filesize) {
 //---------------------------Buffer Modification--------------------------------------------
 void buffer_add(request_t arg){
   pthread_mutex_lock(&mutex);
-  while (queue == BUFFER_SIZE){ //if queue is full then wait
+  while (queue_size == BUFFER_SIZE){ //if queue is full then wait
     pthread_cond_wait(&buffer_empty, &mutex);
   }
-  buffer[add_index] = arg; //storing the current request in a buffer by using an index 
-  add_index = (add_index + 1) % BUFFER_SIZE; //prevents going over 30 requests in the buffer
-  queue++; //increases the amount of requests in the queue
+  buffer[queue_size] = arg; //storing the current request in a buffer by using an index 
+  queue_size = (queue_size + 1) % BUFFER_SIZE; //prevents going over 30 requests in the buffer
   pthread_cond_signal(&buffer_full);
   pthread_mutex_unlock(&mutex);
 }
 
 int fetch_index_fifo() {
-  return rm_index;
+  return 0;
 }
 
 int fetch_index_sff() {
-  int index = rm_index;
-  int counter = 0;
-  for (int i = 0; counter < queue; i = (i + 1) % BUFFER_SIZE, counter++) {
-    if (buffer[i].filesize < buffer[index].filesize){
+  int index = 0;
+  int smallest = INT_MAX;
+  for (int i = 0 ; i < queue_size; i++) {
+    if (buffer[i].filesize < smallest){
       index = i;
+      smallest = buffer[i].filesize;
     }
   }
   return index;
 }
 
 int fetch_index_random() {
-  int counter = 0;
-  int plc_hlder[BUFFER_SIZE];
-  for (int i = rm_index; counter < queue; i = (i + 1) % BUFFER_SIZE, counter++) {
-    plc_hlder[counter] = i;
-  }
-  int random = rand() % queue;
-  return plc_hlder[random];
+  return rand() % queue_size + 1;
 }
 
 int fetch_index() {
@@ -202,17 +195,15 @@ void* thread_request_serve_static(void* arg){
 	// TODO: write code to actualy respond to HTTP requests
     while (1){
       pthread_mutex_lock(&mutex);
-      while (queue == 0){
+      while (queue_size == 0){
         pthread_cond_wait(&buffer_full, &mutex);
       }
       int index = fetch_index();
       request_t curr_request = buffer[index]; //starts at bottom
-      if (index != rm_index) {//just in case i did something wrong
-        buffer[index] = buffer[rm_index];
+      queue_size = (queue_size--);
+      for (int i = index; i < queue_size - 1; i++) {//shifts items into empty space
+        buffer[i] = buffer[i+1];
       }
-      rm_index = (rm_index + 1) % BUFFER_SIZE;
-      queue--; // logic above doesnt actually remove the request from the queue, it just decreases the queue so that the program thinks there is space, and increments rm_index so that the next request can be selected 
-    
       pthread_cond_signal(&buffer_empty);
       pthread_mutex_unlock(&mutex);
       request_serve_static(curr_request.fd, curr_request.filename, curr_request.filesize);
