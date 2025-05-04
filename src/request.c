@@ -9,11 +9,13 @@ int num_threads = DEFAULT_THREADS;
 int buffer_max_size = DEFAULT_BUFFER_SIZE;
 int scheduling_algo = DEFAULT_SCHED_ALGO;
 
+int threshold = 5; // for sff
 //struct int fd filename buffer or buffer size...
-typedef struct {
+typedef struct {//could add another variable, int counter; when new request is made set counter to zero, every time sff is called we loop through entire
   int fd;
   char filename[MAXBUF];
   int filesize;
+  int counter;
 } request_t;
 
 //	TODO: add code to create and manage the buffer
@@ -162,10 +164,13 @@ int fetch_index_fifo() {
   return 0;
 }
 
-int fetch_index_sff() {
+int fetch_index_sff() {//need to address starvation, hint
   int index = 0;
   int smallest = INT_MAX;
   for (int i = 0 ; i < queue_size; i++) {
+    buffer[i].counter++
+    if buffer[i].counter >= threshold {
+      return i
     if (buffer[i].filesize < smallest){
       index = i;
       smallest = buffer[i].filesize;
@@ -260,7 +265,7 @@ void request_handle(int fd) {
     //get file size
     request_t request_in;
     request_in.fd = fd;
-
+    request_in.counter = 0;
     //This line: request_in.filename = filename;
     // Had an issue with type difference, didnt know how to type cast for it, and couldnt forget about it since it risks potential buffer overflow
     //So I asked perplexity and it gave this:
